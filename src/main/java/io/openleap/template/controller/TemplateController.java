@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @SecurityRequirement(name = "LocalKeycloakOauth2")
 @RestController
-@RequestMapping("/api/template")
+@RequestMapping("/template")
 public class TemplateController {
 
     private final TemplateService templateService;
