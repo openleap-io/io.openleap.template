@@ -3,6 +3,26 @@
 This is a template repository for creating new services. It includes a basic structure and configuration files to help
 you get started quickly.
 
+<!-- TOC -->
+* [service-template](#service-template)
+* [Getting Started](#getting-started)
+  * [Local Development](#local-development)
+    * [Prerequisites](#prerequisites)
+    * [Building the Service](#building-the-service)
+    * [Running the Service Locally](#running-the-service-locally)
+      * [Option 1: With Security and Keycloak](#option-1-with-security-and-keycloak)
+        * [Using the API with Authentication](#using-the-api-with-authentication)
+        * [Authenticate](#authenticate)
+        * [Request to the Service API](#request-to-the-service-api)
+      * [Option 2: Without Security](#option-2-without-security)
+        * [Using the API](#using-the-api)
+  * [Deployment on T-Ubuntu22-ERP](#deployment-on-t-ubuntu22-erp)
+    * [Changes to infra-setup](#changes-to-infra-setup)
+    * [Using the template API in T-Ubuntu22-ERP](#using-the-template-api-in-t-ubuntu22-erp)
+      * [Authenticate and get a token](#authenticate-and-get-a-token)
+      * [Request to the Service API](#request-to-the-service-api-1)
+<!-- TOC -->
+
 # Getting Started
 
 ## Local Development
@@ -95,3 +115,161 @@ curl --location 'localhost:8080/api/template/health'
 }
 ```
 
+## Deployment on T-Ubuntu22-ERP
+
+### Changes to infra-setup
+
+1. Add the service to `docker-compose.base.SERVICES.yml`
+```yaml
+  template-service:
+    image: ${templateService_image}
+    pull_policy: always
+    container_name: template-service
+    environment:
+      CONFIG_SERVER_HOST: config
+      CONFIG_SERVER_USERNAME: ${configUser}
+      CONFIG_SERVER_PASSWORD: ${configPassword}
+      SPRING_PROFILES_ACTIVE: ${templateService_profile}
+      eureka.client.service-url.defaultZone: http://${eurekaUser}:${eurekaPassword}@registry:8761/eureka
+    networks:
+      - tools
+      - services
+      - spring
+```
+
+2. Update the .env file with the following variables:
+```env
+templateService_image=docker.io/openleap/io.openleap.template-service:latest
+templateService_profile=keycloak
+```
+
+3. Add the service configuration to `springtools/config/conf`
+
+This is default configuration, you can change it as needed.
+
+`template-service.yml`
+
+```yaml
+server:
+  port: 0
+logging:
+  level:
+    root: INFO
+    io.openleap: DEBUG
+
+oleap:
+  eureka:
+    url: ${oleap.srv.protocol}://${oleap.srv.user.name}:${oleap.srv.user.password}@${oleap.srv.hostname}:${oleap.srv.port}
+    zone: ${oleap.eureka.url}/eureka/
+  srv:
+    protocol: http
+    hostname: localhost
+    port: 8761
+    user:
+      name: user
+      password: sa
+
+eureka:
+  client:
+    instance-info-replication-interval-seconds: 10 # default is 30
+    registryFetchIntervalSeconds: 5 # SBA
+    service-url:
+      defaultZone: ${oleap.eureka.zone} # Must be camelCase
+  instance:
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    health-check-url-path: /actuator/health
+    hostname: ${oleap.srv.hostname}
+    # Request a lease with a validity of 5 seconds. If until then the
+    # lease has not been renewed, it expires and the Eureka server can evict it.
+    # Default: 90s
+    lease-expiration-duration-in-seconds: 5
+
+    # The cadence of lease renewal, i.e. how often a heartbeat is sent to Eureka server.
+    # In this case every 2 seconds. Use this only for development / debugging. In production use the ...
+    # Default: 30s
+    lease-renewal-interval-in-seconds:    2
+    metadata-map:
+      config-protocol: http # The protocol used to access the config server
+      username: ${spring.security.user.name}
+      password: ${spring.security.user.password}
+      protocol: ${oleap.srv.protocol}
+      zone: ${oleap.eureka.zone}
+    non-secure-port-enabled: true
+    prefer-ip-address: true
+    secure-port-enabled: false
+```
+
+`template-service-keycloak.yml`
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        provider:
+          openleap:
+            issuer-uri: https://idptest.datapart-factoring.de/realms/master
+            token-uri: https://idptest.datapart-factoring.de/realms/master/protocol/openid-connect/token
+      resourceserver:
+        jwt:
+          jwk-set-uri: https://idptest.datapart-factoring.de/realms/master/protocol/openid-connect/certs
+
+oleap:
+  client:
+    registration:
+      registration-endpoint: http://keycloak:8090/realms/master/clients-registrations/default
+      registration-username: register-client
+      registration-password: *****
+      token-endpoint: http://keycloak:8090/realms/master/protocol/openid-connect/token
+      registration-scopes: client.create
+      grant-types: client_credentials
+      base-url: https://idptest.datapart-factoring.de
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://user:sa@registry:8761/eureka/
+  instance:
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    hostname: registry
+```
+
+4. Changes to the gateway and exposure of the service
+
+in `springtools/config/conf` add to `openleap-gateway-keycloak-dp-test.yml`
+
+```yaml
+      routes:
+        - id: template-service
+          uri: lb://template-service
+          predicates:
+            - Path=/gw/template/**
+          filters:
+            - StripPrefix=1
+```
+
+### Using the template API in T-Ubuntu22-ERP
+
+#### Authenticate and get a token
+
+```bash
+curl --location 'https://idptest.datapart-factoring.de/realms/master/protocol/openid-connect/token' \
+--header 'Content-Type: application/x-www-form-urlencoded' \
+--data-urlencode 'client_secret=***' \
+--data-urlencode 'grant_type=client_credentials' \
+--data-urlencode 'scope=template.read' \
+--data-urlencode 'client_id=template'
+```
+
+#### Request to the Service API
+
+```bash
+curl --location 'https://uniapitest.datapart-factoring.de/gw/template/health' \
+--header 'Authorization: Bearer ****'
+```
+
+```json
+{
+  "value": "healthy"
+}
+```
