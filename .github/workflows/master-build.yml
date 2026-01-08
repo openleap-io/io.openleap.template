@@ -1,37 +1,29 @@
-name: 'master_build'
+name: master_build
 on:
   push:
     branches: [ main ]
 
-env:
-  MAVEN_OPTS: -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
-
 jobs:
   build_job:
     runs-on: ubuntu-latest
-    name: Build & Test Microservice
+    permissions:
+      contents: read
+      packages: read   # <-- IMPORTANT (read packages)
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Set up JDK 21
-        uses: actions/setup-java@v1
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21 + Maven auth for GitHub Packages
+        uses: actions/setup-java@v4
         with:
-          java-version: 21
-      - name: Cache Maven packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          server-id: github-openleap-starter
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
       - name: Build
-        run: >
-          ./mvnw clean verify
-          -Dci.buildNumber=$GITHUB_RUN_NUMBER
-          -U -B $MAVEN_OPTS
-      - name: Build Image
-        run: ./scripts/docker_build
-      - name: Upload Image
-        run: ./scripts/docker_push
+        run: ./mvnw -U -B clean verify
         env:
-          DOCKER_USER: ${{ secrets.DOCKER_USER }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
