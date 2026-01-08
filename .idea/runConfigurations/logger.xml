@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="web" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <option name="ACTIVE_PROFILES" value="keycloak" />
+  <configuration default="false" name="logger" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <option name="ACTIVE_PROFILES" value="logger" />
     <module name="iam.principal" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.openleap.template.TemplateServiceApplication" />
     <method v="2">
